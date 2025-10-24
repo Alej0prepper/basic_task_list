@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_DB: "tasklist"
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tasklist"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql+psycopg2://postgres:postgres@db:5432/tasklist"
+      APP_ENV: "docker"
+    ports:
+      - "8012:8000"
+    volumes:
+      - ./tasklist_app:/app/tasklist_app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./entrypoint.sh:/app/entrypoint.sh
+      - ./tests:/app/tests:ro
+      - ./pytest.ini:/app/pytest.ini:ro
+    command: ["/app/entrypoint.sh"]
+
+  app-test:
+    build: .
+    environment:
+      DATABASE_URL: "sqlite+pysqlite:///:memory:"
+      APP_ENV: "test"
+    volumes:
+      - ./tasklist_app:/app/tasklist_app
+      - ./tests:/app/tests
+      - ./pytest.ini:/app/pytest.ini
+    command: >
+      sh -c "
+        pytest -q --maxfail=50 --disable-warnings --tb=short --json-report &&
+        echo '--------------------------------------' &&
+        echo '✅ Tests completados' &&
+        echo 'Resumen:' &&
+        jq -r '.summary | to_entries[] | \"\\(.key): \\(.value)\"' .report.json &&
+        echo '--------------------------------------' &&
+        echo '🔴 Tests fallidos:' &&
+        jq -r '.tests[] | select(.outcome == \"failed\") | \"- \\(.nodeid)\"' .report.json || true
+      "
+
+volumes:
+  db_data: {}

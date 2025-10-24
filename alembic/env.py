@@ -13,7 +13,7 @@ from alembic import context
 load_dotenv()  
 
 from tasklist_app.database import Base
-from tasklist_app import 
+from tasklist_app import models  
 
 
 config = context.config
@@ -21,7 +21,6 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
 
 target_metadata = Base.metadata
 
