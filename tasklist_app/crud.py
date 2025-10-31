@@ -1,23 +1,39 @@
+"""CRUD helpers for users and tasks.
+
+This module contains database operations used by the API layer:
+- User helpers for registration/login flows.
+- Task CRUD plus listing with ordering and pagination.
+The function names, signatures, and behavior are preserved as-is.
+"""
+
 from typing import Optional, Sequence
-from sqlalchemy.orm import Session
-from sqlalchemy import asc, desc, case
 import re
 import datetime as dt
+
+from sqlalchemy import asc, desc, case
+from sqlalchemy.orm import Session
+
 from . import models, schemas, utils
 
-# ----------------------------------------------------------------------------- 
+
+# -----------------------------------------------------------------------------
 # USERS (helpers for registration/login)
 # -----------------------------------------------------------------------------
 def get_user_by_email(db: Session, email: str) -> models.User | None:
+    """Return a user by normalized email or None if not found."""
     norm = (email or "").strip().lower()
     if not norm:
         return None
     return db.query(models.User).filter(models.User.email == norm).first()
 
+
 def user_exists(db: Session, email: str) -> bool:
+    """Return True if a user with the given email already exists."""
     return get_user_by_email(db, email) is not None
 
+
 def create_user(db: Session, user_in: schemas.UserCreate) -> models.User:
+    """Create a new user hashing the provided password."""
     email_norm = (user_in.email or "").strip().lower()
     user = models.User(
         email=email_norm,
@@ -28,16 +44,20 @@ def create_user(db: Session, user_in: schemas.UserCreate) -> models.User:
     db.refresh(user)
     return user
 
+
 def get_user_by_handle(db: Session, handle: str) -> models.User | None:
+    """Return a user by handle (email prefix before '@')."""
     norm = (handle or "").strip().lower()
     if not norm:
         return None
     return db.query(models.User).filter(models.User.email.ilike(f"{norm}@%")).first()
 
-# ----------------------------------------------------------------------------- 
+
+# -----------------------------------------------------------------------------
 # TASKS
 # -----------------------------------------------------------------------------
 def create_task(db: Session, task_in: schemas.TaskCreate, owner_id: int) -> models.Task:
+    """Create a task and replicate it to mentioned users via @handle."""
     obj = models.Task(
         text=task_in.text,
         status=task_in.status,
@@ -49,7 +69,6 @@ def create_task(db: Session, task_in: schemas.TaskCreate, owner_id: int) -> mode
     db.commit()
     db.refresh(obj)
 
-    # Replicas por @handle (preservado)
     mention_pattern = re.compile(r"@([A-Za-z0-9._-]+)")
     handles = set(m.group(1).lower() for m in mention_pattern.finditer(task_in.text or ""))
 
@@ -73,10 +92,14 @@ def create_task(db: Session, task_in: schemas.TaskCreate, owner_id: int) -> mode
 
     return obj
 
+
 def get_task(db: Session, task_id: int) -> models.Task | None:
+    """Return a task by its ID or None if not found."""
     return db.query(models.Task).filter(models.Task.id == task_id).first()
 
+
 def update_task(db: Session, task_id: int, task_in: schemas.TaskUpdate) -> models.Task | None:
+    """Update task text, status, and tags; return the updated task or None."""
     obj = get_task(db, task_id)
     if not obj:
         return None
@@ -87,7 +110,9 @@ def update_task(db: Session, task_id: int, task_in: schemas.TaskUpdate) -> model
     db.refresh(obj)
     return obj
 
+
 def delete_task(db: Session, task_id: int) -> bool:
+    """Delete a task by ID; return True if it existed and was deleted."""
     obj = get_task(db, task_id)
     if not obj:
         return False
@@ -95,11 +120,11 @@ def delete_task(db: Session, task_id: int) -> bool:
     db.commit()
     return True
 
-from sqlalchemy import asc, desc, case
 
 def list_tasks_page(
     db, owner_id, limit, offset, status, order_by, order_dir, search=None
 ):
+    """List tasks with optional filters and pagination, preserving original logic."""
     q = db.query(models.Task)
 
     if owner_id is not None:
@@ -114,13 +139,11 @@ def list_tasks_page(
 
     if (order_by or "").lower() == "done":
         is_done = case((models.Task.status == "DONE", 1), else_=0)
-        # Orden por done y luego fecha, y por último id: orden estable
         primary = desc(is_done) if desc_dir else asc(is_done)
         secondary = desc(models.Task.created_at) if desc_dir else asc(models.Task.created_at)
         tertiary = desc(models.Task.id) if desc_dir else asc(models.Task.id)
         q = q.order_by(primary, secondary, tertiary)
     else:
-        # created_at por defecto, con tie-break por id
         col = getattr(models.Task, order_by, models.Task.created_at)
         primary = desc(col) if desc_dir else asc(col)
         tertiary = desc(models.Task.id) if desc_dir else asc(models.Task.id)
@@ -132,9 +155,11 @@ def list_tasks_page(
         items=items,
         meta=schemas.PageMeta(total=total, limit=limit, offset=offset),
     )
+
+
 def list_tasks_for_export(db, owner_id, status, order_by, order_dir, search=None):
+    """Return all matching tasks for export, preserving original selection logic."""
     q = db.query(models.Task)
-    # ... mismos filtros ...
     desc_dir = (order_dir or "").lower() == "desc"
 
     if (order_by or "").lower() == "done":

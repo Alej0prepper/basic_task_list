@@ -1,3 +1,13 @@
+"""FastAPI application entrypoint for Tasklist.
+
+This module configures CORS and session middleware, mounts static assets,
+initializes the SQLAdmin UI, defines cookie/JWT helpers, and exposes:
+- Auth API endpoints (/auth/*)
+- Task API endpoints (/tasks*)
+- HTML views (/app/*)
+- Export endpoints for CSV/XLSX
+"""
+
 from typing import Optional
 from datetime import timedelta, datetime
 from io import BytesIO, StringIO
@@ -34,7 +44,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Usa misma secret para cookie de sesión y para el backend del admin
 ADMIN_SESSION_SECRET = os.getenv("ADMIN_SESSION_SECRET", settings.SECRET_KEY)
 app.add_middleware(SessionMiddleware, secret_key=ADMIN_SESSION_SECRET, same_site="lax")
 
@@ -47,6 +56,8 @@ authentication_backend = AdminAuth(secret_key=ADMIN_SESSION_SECRET)
 admin = Admin(app, engine, authentication_backend=authentication_backend)
 
 class UserAdmin(ModelView, model=models.User):
+    """Admin view configuration for users."""
+
     column_list = [
         models.User.id,
         models.User.email,
@@ -60,6 +71,8 @@ class UserAdmin(ModelView, model=models.User):
     icon = "fa-solid fa-user"
 
 class TaskAdmin(ModelView, model=models.Task):
+    """Admin view configuration for tasks."""
+
     column_list = [
         models.Task.id,
         models.Task.text,
@@ -78,7 +91,6 @@ class TaskAdmin(ModelView, model=models.Task):
 admin.add_view(UserAdmin)
 admin.add_view(TaskAdmin)
 
-# Plantillas (carpeta interna)
 templates = Jinja2Templates(directory="tasklist_app/templates")
 
 # -----------------------------------------------------------------------------
@@ -87,6 +99,7 @@ templates = Jinja2Templates(directory="tasklist_app/templates")
 COOKIE_NAME = "access_token"
 
 def set_auth_cookie(response: RedirectResponse | JSONResponse, token: str):
+    """Set the HttpOnly auth cookie with the given bearer token."""
     response.set_cookie(
         key=COOKIE_NAME,
         value=f"Bearer {token}",
@@ -98,9 +111,11 @@ def set_auth_cookie(response: RedirectResponse | JSONResponse, token: str):
     )
 
 def clear_auth_cookie(response: RedirectResponse | JSONResponse):
+    """Remove the auth cookie from the client."""
     response.delete_cookie(COOKIE_NAME, path="/")
 
 def get_token_from_cookie(request: Request) -> Optional[str]:
+    """Extract the raw token from the auth cookie if present."""
     raw = request.cookies.get(COOKIE_NAME)
     if not raw:
         return None
@@ -109,6 +124,7 @@ def get_token_from_cookie(request: Request) -> Optional[str]:
     return raw
 
 def current_user_from_cookie(request: Request, db: Session) -> Optional[models.User]:
+    """Resolve and return the current user from the cookie token, or None."""
     token = get_token_from_cookie(request)
     if not token:
         return None
@@ -126,6 +142,7 @@ def current_user_from_cookie(request: Request, db: Session) -> Optional[models.U
 # -----------------------------------------------------------------------------
 @app.post("/auth/register", response_model=schemas.UserOut, status_code=201)
 def register(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
+    """Register a new user and return the public user model."""
     exists = db.query(models.User).filter(models.User.email == user_in.email).first()
     if exists:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -137,6 +154,7 @@ def register(user_in: schemas.UserCreate, db: Session = Depends(deps.get_db)):
 
 @app.post("/auth/login", response_model=schemas.Token)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(deps.get_db)):
+    """Validate credentials and issue a JWT bearer token."""
     user = db.query(models.User).filter(models.User.email == form.username).first()
     if not user or not utils.verify_password(form.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
@@ -148,6 +166,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(dep
 # -----------------------------------------------------------------------------
 @app.get("/health")
 def health():
+    """Health check endpoint."""
     return {"status": "ok"}
 
 # -----------------------------------------------------------------------------
@@ -159,10 +178,12 @@ def create_task(
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ):
+    """Create a task for the authenticated user."""
     return crud.create_task(db=db, task_in=task_in, owner_id=current_user.id)
 
 @app.get("/tasks/{task_id}", response_model=schemas.TaskOut)
 def get_task(task_id: int, db: Session = Depends(deps.get_db)):
+    """Return a task by ID or raise 404."""
     t = crud.get_task(db, task_id)
     if not t:
         raise HTTPException(status_code=404, detail="Not found")
@@ -170,6 +191,7 @@ def get_task(task_id: int, db: Session = Depends(deps.get_db)):
 
 @app.put("/tasks/{task_id}", response_model=schemas.TaskOut)
 def update_task(task_id: int, task_in: schemas.TaskUpdate, db: Session = Depends(deps.get_db)):
+    """Update a task by ID or raise 404."""
     t = crud.update_task(db, task_id, task_in)
     if not t:
         raise HTTPException(status_code=404, detail="Not found")
@@ -177,6 +199,7 @@ def update_task(task_id: int, task_in: schemas.TaskUpdate, db: Session = Depends
 
 @app.delete("/tasks/{task_id}", status_code=204)
 def delete_task(task_id: int, db: Session = Depends(deps.get_db)):
+    """Delete a task by ID. Returns 404 if it does not exist."""
     ok = crud.delete_task(db, task_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Not found")
@@ -193,6 +216,7 @@ def list_tasks(
     db: Session = Depends(deps.get_db),
     current_user: Optional[models.User] = Depends(deps.get_current_user_optional),
 ):
+    """List tasks with pagination and optional owner filter inferred from auth."""
     owner_id = current_user.id if current_user else None
     order_by = "done" if (sort or "").lower() == "done" else "created_at"
     order_dir = (dir or "desc")
@@ -218,6 +242,7 @@ def list_tasks_ui(
     db: Session = Depends(deps.get_db),
     current_user: Optional[models.User] = Depends(deps.get_current_user_optional),
 ):
+    """List tasks for the UI with the same shape as the API endpoint."""
     owner_id = current_user.id if current_user else None
     order_by = "done" if (sort or "").lower() == "done" else "created_at"
     order_dir = (dir or "desc")
@@ -237,10 +262,12 @@ def list_tasks_ui(
 # -----------------------------------------------------------------------------
 @app.get("/", include_in_schema=False)
 def root_redirect():
+    """Redirect root to the app entrypoint."""
     return RedirectResponse(url="/app")
 
 @app.get("/app", response_class=HTMLResponse, include_in_schema=False)
 def app_home(request: Request, db: Session = Depends(deps.get_db)):
+    """Send authenticated users to tasks, otherwise to login."""
     user = current_user_from_cookie(request, db)
     if user:
         return RedirectResponse(url="/app/tasks")
@@ -248,6 +275,7 @@ def app_home(request: Request, db: Session = Depends(deps.get_db)):
 
 @app.get("/app/login", response_class=HTMLResponse, include_in_schema=False)
 def login_page(request: Request):
+    """Render the login page."""
     return templates.TemplateResponse("login.html", {"request": request})
 
 @app.post("/app/login", response_class=HTMLResponse, include_in_schema=False)
@@ -257,6 +285,7 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(deps.get_db),
 ):
+    """Handle login form; set cookie and redirect on success."""
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user or not utils.verify_password(password, user.password_hash):
         return templates.TemplateResponse(
@@ -271,12 +300,14 @@ def login_submit(
 
 @app.get("/app/logout", include_in_schema=False)
 def logout():
+    """Clear the auth cookie and redirect to login."""
     resp = RedirectResponse(url="/app/login", status_code=302)
     clear_auth_cookie(resp)
     return resp
 
 @app.get("/app/tasks", response_class=HTMLResponse, include_in_schema=False)
 def tasks_page(request: Request, db: Session = Depends(deps.get_db)):
+    """Render the tasks page for authenticated users; redirect otherwise."""
     user = current_user_from_cookie(request, db)
     if not user:
         resp = RedirectResponse(url="/app/login", status_code=302)
@@ -286,6 +317,7 @@ def tasks_page(request: Request, db: Session = Depends(deps.get_db)):
 
 @app.get("/app/register", response_class=HTMLResponse, include_in_schema=False)
 def register_page(request: Request):
+    """Render the registration page."""
     return templates.TemplateResponse("register.html", {"request": request})
 
 @app.post("/app/register", response_class=HTMLResponse, include_in_schema=False)
@@ -296,6 +328,7 @@ def register_submit(
     password_confirm: str = Form(...),
     db: Session = Depends(deps.get_db),
 ):
+    """Handle registration form, create user, set cookie and redirect."""
     email_norm = (email or "").strip().lower()
     if not email_norm:
         return templates.TemplateResponse(
@@ -341,6 +374,7 @@ def export_tasks_xlsx(
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ):
+    """Export tasks to XLSX, applying the same filters and sorting as the API."""
     owner_id = current_user.id if current_user else None
     order_by = "done" if (sort or "").lower() == "done" else "created_at"
     order_dir = (dir or "desc")
@@ -397,6 +431,7 @@ def export_tasks_csv(
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ):
+    """Export tasks to CSV, applying the same filters and sorting as the API."""
     owner_id = current_user.id if current_user else None
     order_by = "done" if (sort or "").lower() == "done" else "created_at"
     order_dir = (dir or "desc")
@@ -426,9 +461,4 @@ def export_tasks_csv(
     }
     return PlainTextResponse(content=output.getvalue(), headers=headers, media_type="text/csv; charset=utf-8")
 
-# # -----------------------------------------------------------------------------
-# # Redirects legacy
-# # -----------------------------------------------------------------------------
-# @app.get("/tasks/ui", include_in_schema=False)
-# def legacy_tasks_ui_redirect():
-#     return RedirectResponse(url="/tasks-ui", status_code=307)
+
