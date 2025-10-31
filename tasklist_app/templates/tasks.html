@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tasklist • Tareas</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='favicon-32.png') }}">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #fff; color: #111827; font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; position: relative; }
+    h1 { font-size: 1.6rem; margin-bottom: 16px; }
+
+    /* Header con logout */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .logout {
+      background: #ef4444;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: .9rem;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .logout:hover { background: #dc2626; }
+
+    /* Crear tarea */
+    .create-card {
+      border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; margin-bottom: 16px;
+      box-shadow: 0 6px 16px rgba(0,0,0,.05); background: #fff;
+    }
+    .create-row { display: grid; grid-template-columns: 1fr 180px 120px; gap: 10px; }
+    .create-row input, .create-row select, .create-row button {
+      padding: .55rem .7rem; border-radius: 8px; border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
+    }
+    .create-row input:focus, .create-row select:focus {
+      border-color: #2563eb; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.15);
+    }
+    .btn { background: #2563eb; color: #fff; border: none; cursor: pointer; transition: background .2s; }
+    .btn:hover { background: #1d4ed8; }
+    .muted { color: #6b7280; font-size: .85rem; }
+    .err { color: #b91c1c; }
+
+    /* Filtros */
+    .filters {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .filters input, .filters select, .filters button {
+      padding: .55rem .7rem; border-radius: 8px; border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
+    }
+    .filters input:focus, .filters select:focus {
+      border-color: #2563eb; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.15);
+    }
+    .btn.secondary { background: #e5e7eb; color: #111827; }
+
+    /* Lista */
+    .list { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
+    .row { display: grid; grid-template-columns: 60px 1fr 140px 180px; gap: 12px; padding: 12px; border-bottom: 1px solid #f3f4f6; align-items: center; }
+    .row.header { background: #f9fafb; font-weight: 600; }
+    .row:last-child { border-bottom: none; }
+    .status { font-size: .8rem; padding: .25rem .5rem; border-radius: 8px; background: #eef2ff; color: #1e3a8a; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>Tus tareas</h1>
+      <button class="logout" onclick="logout()">Cerrar sesión</button>
+    </div>
+
+    <!-- Crear tarea -->
+    <div class="create-card">
+      <div class="create-row">
+        <input id="new-text" type="text" placeholder="Escribe la tarea... (admite @usuario y #tags)" />
+        <select id="new-status">
+          <option value="OPEN" selected>OPEN</option>
+          <option value="IN_PROGRESS">IN_PROGRESS</option>
+          <option value="DONE">DONE</option>
+        </select>
+        <button class="btn" onclick="createTask()">Añadir</button>
+      </div>
+      <div id="create-msg" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- Filtros / orden -->
+    <div class="filters">
+      <input id="q" type="search" placeholder="Buscar por texto..." />
+      <select id="sort">
+        <option value="date" selected>Ordenar por fecha</option>
+        <option value="done">Ordenar por done/not done</option>
+      </select>
+      <select id="dir">
+        <option value="desc" selected>Descendente</option>
+        <option value="asc">Ascendente</option>
+      </select>
+      <button class="btn" onclick="applyFilters()">Aplicar</button>
+      <button class="btn secondary" onclick="resetFilters()">Limpiar</button>
+      <button class="btn secondary" onclick="exportXlsx()">📄 Exportar Excel</button>
+      <button onclick="exportCsv()">🗒 Exportar CSV</button>
+    </div>
+
+    <!-- Lista -->
+    <div class="list">
+      <div class="row header">
+        <div>ID</div><div>Texto</div><div>Estado</div><div>Fecha</div>
+      </div>
+      <div id="list-body"></div>
+    </div>
+  </div>
+
+  <script>
+    function logout() {
+      window.location.href = "/app/logout";
+    }
+
+    async function createTask() {
+      const textEl = document.getElementById('new-text');
+      const statusEl = document.getElementById('new-status');
+      const msg = document.getElementById('create-msg');
+      const text = textEl.value.trim();
+      const status = statusEl.value;
+
+      msg.textContent = '';
+      if (!text) {
+        msg.textContent = '⚠️ Escribe un texto para la tarea.'; msg.className = 'muted err'; return;
+      }
+
+      try {
+        const res = await fetch('/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ text, status })
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          msg.textContent = `❌ Error ${res.status}: ${t}`;
+          msg.className = 'muted err';
+          return;
+        }
+        textEl.value = '';
+        statusEl.value = 'OPEN';
+        msg.textContent = '✅ Tarea creada';
+        msg.className = 'muted';
+        await loadTasks();
+      } catch (e) {
+        msg.textContent = `❌ Error de red: ${e}`;
+        msg.className = 'muted err';
+      }
+    }
+
+    async function loadTasks() {
+      const q = document.getElementById('q').value.trim();
+      const sort = document.getElementById('sort').value;
+      const dir = document.getElementById('dir').value;
+      const params = new URLSearchParams({ limit: '50', offset: '0' });
+      if (q)   params.set('q', q);
+      if (sort) params.set('sort', sort);
+      if (dir)  params.set('dir', dir);
+
+      const res = await fetch(`/tasks-ui?${params.toString()}`, { headers: { Accept: 'application/json' }});
+      const body = document.getElementById('list-body');
+      if (!res.ok) {
+        const txt = await res.text();
+        body.innerHTML = `<div class="row"><div class="muted">Error ${res.status}: ${escapeHtml(txt)}</div></div>`;
+        return;
+      }
+      const data = await res.json();
+      const items = data.items || [];
+      if (!items.length) {
+        body.innerHTML = `<div class="row"><div class="muted">No hay tareas</div></div>`;
+        return;
+      }
+      body.innerHTML = items.map(t => `
+        <div class="row">
+          <div class="muted">#${t.id}</div>
+          <div>${escapeHtml(t.text)}</div>
+          <div><span class="status">${escapeHtml(t.status || '')}</span></div>
+          <div class="muted">${formatDate(t.created_at)}</div>
+        </div>
+      `).join('');
+    }
+
+    function buildExportQuery() {
+      const q   = document.getElementById('q').value.trim();
+      const sort= document.getElementById('sort').value;
+      const dir = document.getElementById('dir').value;
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      if (sort) params.set('sort', sort);
+      if (dir) params.set('dir', dir);
+      return params.toString();
+    }
+    function exportXlsx() {
+      const qs = buildExportQuery();
+      window.location.href = `/tasks-export.xlsx${qs ? ("?"+qs) : ""}`;
+    }
+    function exportCsv() {
+      const qs = buildExportQuery();
+      window.location.href = `/tasks-export.csv${qs ? ("?"+qs) : ""}`;
+    }
+
+    function applyFilters(){ loadTasks(); }
+    function resetFilters(){
+      document.getElementById('q').value = '';
+      document.getElementById('sort').value = 'date';
+      document.getElementById('dir').value = 'desc';
+      loadTasks();
+    }
+
+    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+    function formatDate(iso){ if(!iso) return ''; try{const d=new Date(iso);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}catch{return iso;} }
+
+    window.addEventListener('DOMContentLoaded', loadTasks);
+  </script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.db
+*.sqlite3
+*.log
+
+# Virtual env
+venv/
+.venv/
+.env
+.env.*
+
+# Editor
+.vscode/
+.idea/
+
+
+# Docker
+*.pid
+*.sock
+
+# Ngrok / Secrets
+.ngrok2/
+ngrok.yml
+
+# Build artifacts
+dist/
+build/
+
+alembic/versions/*.pyc
