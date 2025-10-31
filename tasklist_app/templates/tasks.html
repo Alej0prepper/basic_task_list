@@ -4,67 +4,90 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Tasklist • Tareas</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='favicon-32.png') }}">
   <style>
     * { box-sizing: border-box; }
+    :root{
+      --blue:#2563eb;
+      --blue-hover:#1d4ed8;
+      --red:#ef4444;
+      --red-hover:#dc2626;
+      --gray:#e5e7eb;
+      --ring: 0 0 0 4px rgba(37,99,235,.18);
+      --shadow: 0 8px 18px rgba(0,0,0,.06);
+      --shadow-sm: 0 4px 12px rgba(0,0,0,.05);
+      --radius: 12px;
+    }
     body { margin: 0; background: #fff; color: #111827; font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
     .container { max-width: 900px; margin: 0 auto; padding: 24px; position: relative; }
     h1 { font-size: 1.6rem; margin-bottom: 16px; }
 
     /* Header con logout */
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 20px;
-    }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .logout {
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 8px 14px;
-      font-size: .9rem;
-      cursor: pointer;
-      transition: background .2s;
+      background: var(--red); color: #fff; border: none; border-radius: var(--radius);
+      padding: 10px 16px; font-size: .92rem; cursor: pointer; transition: transform .06s ease, box-shadow .2s, background .2s;
+      box-shadow: var(--shadow-sm);
     }
-    .logout:hover { background: #dc2626; }
+    .logout:hover { background: var(--red-hover); box-shadow: var(--shadow); }
+    .logout:active { transform: translateY(1px); }
+    .logout:focus-visible { outline: none; box-shadow: var(--ring); }
 
     /* Crear tarea */
     .create-card {
-      border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; margin-bottom: 16px;
-      box-shadow: 0 6px 16px rgba(0,0,0,.05); background: #fff;
+      border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 12px; margin-bottom: 16px;
+      box-shadow: var(--shadow-sm); background: #fff;
     }
-    .create-row { display: grid; grid-template-columns: 1fr 180px 120px; gap: 10px; }
-    .create-row input, .create-row select, .create-row button {
-      padding: .55rem .7rem; border-radius: 8px; border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
+    .create-row { display: grid; grid-template-columns: 1fr 160px 130px; gap: 10px; }
+    .input, .select, .btn {
+      padding: .6rem .8rem; border-radius: var(--radius); border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
     }
-    .create-row input:focus, .create-row select:focus {
-      border-color: #2563eb; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.15);
+    .input:focus, .select:focus { border-color: var(--blue); background: #fff; outline: none; box-shadow: var(--ring); }
+
+    /* Botones bonitos */
+    .btn {
+      border: none; cursor: pointer; transition: transform .06s ease, box-shadow .2s, background .2s, color .2s;
+      background: var(--blue); color: #111827; box-shadow: var(--shadow-sm);
     }
-    .btn { background: #2563eb; color: #fff; border: none; cursor: pointer; transition: background .2s; }
-    .btn:hover { background: #1d4ed8; }
+    .btn:hover { background: var(--blue-hover); box-shadow: var(--shadow); }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+    .btn.secondary { background: var(--gray); color: #111827; }
+    .btn.secondary:hover { box-shadow: var(--shadow); }
+    .btn.danger { background: var(--red); color: #fff; }
+    .btn.danger:hover { background: var(--red-hover); }
+    .btn.icon { display:inline-flex; align-items:center; gap:.45rem; }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+
     .muted { color: #6b7280; font-size: .85rem; }
     .err { color: #b91c1c; }
 
     /* Filtros */
-    .filters {
-      display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px;
-    }
-    .filters input, .filters select, .filters button {
-      padding: .55rem .7rem; border-radius: 8px; border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
-    }
-    .filters input:focus, .filters select:focus {
-      border-color: #2563eb; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(37,99,235,.15);
-    }
-    .btn.secondary { background: #e5e7eb; color: #111827; }
+    .filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    .filters .input, .filters .select, .filters .btn { padding: .55rem .7rem; }
 
     /* Lista */
-    .list { border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; }
-    .row { display: grid; grid-template-columns: 60px 1fr 140px 180px; gap: 12px; padding: 12px; border-bottom: 1px solid #f3f4f6; align-items: center; }
+    .list { border: 1px solid #e5e7eb; border-radius: var(--radius); overflow: hidden; }
+    .row {
+      display: grid; grid-template-columns: 60px 1fr 200px 180px 150px;
+      gap: 12px; padding: 12px; border-bottom: 1px solid #f3f4f6; align-items: center;
+    }
     .row.header { background: #f9fafb; font-weight: 600; }
     .row:last-child { border-bottom: none; }
-    .status { font-size: .8rem; padding: .25rem .5rem; border-radius: 8px; background: #eef2ff; color: #1e3a8a; text-align: center; }
+
+    .status-pill { font-size: .8rem; padding: .25rem .5rem; border-radius: 999px; display:inline-block; min-width:80px; text-align:center; }
+    .status-pending { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+    .status-done { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+
+    .actions { display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap; }
+
+    /* Select compacto de estado */
+    .state-select {
+      border: 1px solid #d1d5db; background: #fff; padding: .5rem .6rem; border-radius: var(--radius);
+      transition: box-shadow .2s, border-color .2s;
+    }
+    .state-select:focus { border-color: var(--blue); outline: none; box-shadow: var(--ring); }
   </style>
 </head>
 <body>
@@ -77,46 +100,53 @@
     <!-- Crear tarea -->
     <div class="create-card">
       <div class="create-row">
-        <input id="new-text" type="text" placeholder="Escribe la tarea... (admite @usuario y #tags)" />
-        <select id="new-status">
-          <option value="OPEN" selected>OPEN</option>
-          <option value="IN_PROGRESS">IN_PROGRESS</option>
-          <option value="DONE">DONE</option>
+        <input class="input" id="new-text" type="text" placeholder="Escribe la tarea..." />
+        <select class="select" id="new-status">
+          <option value="pending" selected>pending</option>
+          <option value="done">done</option>
         </select>
-        <button class="btn" onclick="createTask()">Añadir</button>
+        <button class="btn icon" onclick="createTask()">➕ Añadir</button>
       </div>
       <div id="create-msg" class="muted" style="margin-top:8px;"></div>
     </div>
 
     <!-- Filtros / orden -->
     <div class="filters">
-      <input id="q" type="search" placeholder="Buscar por texto..." />
-      <select id="sort">
+      <input class="input" id="q" type="search" placeholder="Buscar por texto..." />
+      <select class="select" id="sort">
         <option value="date" selected>Ordenar por fecha</option>
-        <option value="done">Ordenar por done/not done</option>
+        <option value="done">Ordenar por estado</option>
       </select>
-      <select id="dir">
+      <select class="select" id="dir">
         <option value="desc" selected>Descendente</option>
         <option value="asc">Ascendente</option>
       </select>
       <button class="btn" onclick="applyFilters()">Aplicar</button>
       <button class="btn secondary" onclick="resetFilters()">Limpiar</button>
-      <button class="btn secondary" onclick="exportXlsx()">📄 Exportar Excel</button>
-      <button onclick="exportCsv()">🗒 Exportar CSV</button>
+      <button class="btn secondary icon" onclick="exportXlsx()">📄 Excel</button>
+      <button class="btn secondary icon" onclick="exportCsv()">🗒 CSV</button>
     </div>
 
     <!-- Lista -->
     <div class="list">
       <div class="row header">
-        <div>ID</div><div>Texto</div><div>Estado</div><div>Fecha</div>
+        <div>ID</div><div>Texto</div><div>Estado</div><div>Fecha</div><div>Acciones</div>
       </div>
       <div id="list-body"></div>
     </div>
   </div>
 
   <script>
-    function logout() {
-      window.location.href = "/app/logout";
+    // Cache global para tener el texto/tags actuales al hacer PUT
+    window.TASKS_BY_ID = new Map();
+
+    function logout() { window.location.href = "/app/logout"; }
+
+    async function handleAuthRedirect(res) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('text/html')) { window.location.href = "/app/login"; return true; }
+      if (res.redirected && new URL(res.url).pathname.startsWith('/app/')) { window.location.href = res.url; return true; }
+      return false;
     }
 
     async function createTask() {
@@ -127,30 +157,73 @@
       const status = statusEl.value;
 
       msg.textContent = '';
-      if (!text) {
-        msg.textContent = '⚠️ Escribe un texto para la tarea.'; msg.className = 'muted err'; return;
-      }
+      if (!text) { msg.textContent = '⚠️ Escribe un texto para la tarea.'; msg.className = 'muted err'; return; }
 
       try {
         const res = await fetch('/tasks', {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({ text, status })
         });
+        if (await handleAuthRedirect(res)) return;
         if (!res.ok) {
-          const t = await res.text();
-          msg.textContent = `❌ Error ${res.status}: ${t}`;
+          let t; try { t = await res.json(); } catch { t = await res.text(); }
+          msg.textContent = `❌ Error ${res.status}: ${typeof t === 'string' ? t : JSON.stringify(t)}`;
           msg.className = 'muted err';
           return;
         }
         textEl.value = '';
-        statusEl.value = 'OPEN';
+        statusEl.value = 'pending';
         msg.textContent = '✅ Tarea creada';
         msg.className = 'muted';
         await loadTasks();
       } catch (e) {
-        msg.textContent = `❌ Error de red: ${e}`;
-        msg.className = 'muted err';
+        msg.textContent = `❌ Error de red: ${e}`; msg.className = 'muted err';
+      }
+    }
+
+    // Eliminar SIN confirmación
+    async function deleteTask(id) {
+      try {
+        const res = await fetch(`/tasks/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+        if (await handleAuthRedirect(res)) return;
+        // Acepta 204 o cualquier ok
+        if (!res.ok && res.status !== 204) {
+          const t = await res.text();
+          console.error('Delete failed:', t);
+        }
+        await loadTasks();
+      } catch (e) {
+        console.error('Network error on delete:', e);
+      }
+    }
+
+    // PUT requiere text => enviamos el texto actual y tags si existen
+    async function updateTaskStatus(id, status) {
+      const current = window.TASKS_BY_ID.get(id) || {};
+      const payload = {
+        text: current.text ?? '',
+        status,
+      };
+      if (current.tags !== undefined) payload.tags = current.tags;
+
+      try {
+        const res = await fetch(`/tasks/${id}`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (await handleAuthRedirect(res)) return;
+        if (!res.ok) {
+          let t; try { t = await res.json(); } catch { t = await res.text(); }
+          console.error('Update failed:', t);
+          return;
+        }
+        await loadTasks();
+      } catch (e) {
+        console.error('Network error on update:', e);
       }
     }
 
@@ -163,7 +236,12 @@
       if (sort) params.set('sort', sort);
       if (dir)  params.set('dir', dir);
 
-      const res = await fetch(`/tasks-ui?${params.toString()}`, { headers: { Accept: 'application/json' }});
+      const res = await fetch(`/tasks-ui?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+        credentials: 'same-origin'
+      });
+      if (await handleAuthRedirect(res)) return;
+
       const body = document.getElementById('list-body');
       if (!res.ok) {
         const txt = await res.text();
@@ -172,6 +250,11 @@
       }
       const data = await res.json();
       const items = data.items || [];
+
+      // Refresca el cache
+      window.TASKS_BY_ID.clear();
+      for (const t of items) window.TASKS_BY_ID.set(t.id, t);
+
       if (!items.length) {
         body.innerHTML = `<div class="row"><div class="muted">No hay tareas</div></div>`;
         return;
@@ -180,8 +263,17 @@
         <div class="row">
           <div class="muted">#${t.id}</div>
           <div>${escapeHtml(t.text)}</div>
-          <div><span class="status">${escapeHtml(t.status || '')}</span></div>
+          <div>
+            <span class="status-pill ${t.status === 'done' ? 'status-done' : 'status-pending'}">${escapeHtml(t.status || '')}</span>
+            <select class="state-select" style="margin-left:8px" onchange="updateTaskStatus(${t.id}, this.value)">
+              <option value="pending" ${t.status === 'pending' ? 'selected' : ''}>pending</option>
+              <option value="done" ${t.status === 'done' ? 'selected' : ''}>done</option>
+            </select>
+          </div>
           <div class="muted">${formatDate(t.created_at)}</div>
+          <div class="actions">
+            <button class="btn danger icon" onclick="deleteTask(${t.id})">🗑️ Eliminar</button>
+          </div>
         </div>
       `).join('');
     }
@@ -196,22 +288,11 @@
       if (dir) params.set('dir', dir);
       return params.toString();
     }
-    function exportXlsx() {
-      const qs = buildExportQuery();
-      window.location.href = `/tasks-export.xlsx${qs ? ("?"+qs) : ""}`;
-    }
-    function exportCsv() {
-      const qs = buildExportQuery();
-      window.location.href = `/tasks-export.csv${qs ? ("?"+qs) : ""}`;
-    }
+    function exportXlsx() { const qs = buildExportQuery(); window.location.href = `/tasks-export.xlsx${qs ? ("?"+qs) : ""}`; }
+    function exportCsv()  { const qs = buildExportQuery(); window.location.href = `/tasks-export.csv${qs ? ("?"+qs) : ""}`; }
 
     function applyFilters(){ loadTasks(); }
-    function resetFilters(){
-      document.getElementById('q').value = '';
-      document.getElementById('sort').value = 'date';
-      document.getElementById('dir').value = 'desc';
-      loadTasks();
-    }
+    function resetFilters(){ document.getElementById('q').value = ''; document.getElementById('sort').value = 'date'; document.getElementById('dir').value = 'desc'; loadTasks(); }
 
     function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
     function formatDate(iso){ if(!iso) return ''; try{const d=new Date(iso);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}catch{return iso;} }

@@ -1,9 +1,10 @@
 from typing import Optional
 from datetime import timedelta, datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 import os
+import csv
 
-from fastapi import FastAPI, Depends, HTTPException, status, Query, Request, Form
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse, StreamingResponse, PlainTextResponse
@@ -76,7 +77,6 @@ class TaskAdmin(ModelView, model=models.Task):
 
 admin.add_view(UserAdmin)
 admin.add_view(TaskAdmin)
-
 
 # Plantillas (carpeta interna)
 templates = Jinja2Templates(directory="tasklist_app/templates")
@@ -397,9 +397,6 @@ def export_tasks_csv(
     db: Session = Depends(deps.get_db),
     current_user: models.User = Depends(deps.get_current_user),
 ):
-    import csv
-    from io import StringIO
-
     owner_id = current_user.id if current_user else None
     order_by = "done" if (sort or "").lower() == "done" else "created_at"
     order_dir = (dir or "desc")
@@ -429,9 +426,9 @@ def export_tasks_csv(
     }
     return PlainTextResponse(content=output.getvalue(), headers=headers, media_type="text/csv; charset=utf-8")
 
-# -----------------------------------------------------------------------------
-# Redirects legacy
-# -----------------------------------------------------------------------------
-@app.get("/tasks/ui", include_in_schema=False)
-def legacy_tasks_ui_redirect():
-    return RedirectResponse(url="/tasks-ui", status_code=307)
+# # -----------------------------------------------------------------------------
+# # Redirects legacy
+# # -----------------------------------------------------------------------------
+# @app.get("/tasks/ui", include_in_schema=False)
+# def legacy_tasks_ui_redirect():
+#     return RedirectResponse(url="/tasks-ui", status_code=307)
