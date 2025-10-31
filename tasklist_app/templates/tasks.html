@@ -23,7 +23,6 @@
     .container { max-width: 900px; margin: 0 auto; padding: 24px; position: relative; }
     h1 { font-size: 1.6rem; margin-bottom: 16px; }
 
-    /* Header con logout */
     .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     .logout {
       background: var(--red); color: #fff; border: none; border-radius: var(--radius);
@@ -34,18 +33,17 @@
     .logout:active { transform: translateY(1px); }
     .logout:focus-visible { outline: none; box-shadow: var(--ring); }
 
-    /* Crear tarea */
     .create-card {
       border: 1px solid #e5e7eb; border-radius: var(--radius); padding: 12px; margin-bottom: 16px;
       box-shadow: var(--shadow-sm); background: #fff;
     }
     .create-row { display: grid; grid-template-columns: 1fr 160px 130px; gap: 10px; }
-    .input, .select, .btn {
+    .input, .select, .btn, .textarea {
       padding: .6rem .8rem; border-radius: var(--radius); border: 1px solid #d1d5db; background: #f9fafb; font-size: .95rem;
     }
-    .input:focus, .select:focus { border-color: var(--blue); background: #fff; outline: none; box-shadow: var(--ring); }
+    .textarea { width: 100%; min-height: 100px; resize: vertical; }
+    .input:focus, .select:focus, .textarea:focus { border-color: var(--blue); background: #fff; outline: none; box-shadow: var(--ring); }
 
-    /* Botones bonitos */
     .btn {
       border: none; cursor: pointer; transition: transform .06s ease, box-shadow .2s, background .2s, color .2s;
       background: var(--blue); color: #111827; box-shadow: var(--shadow-sm);
@@ -63,14 +61,12 @@
     .muted { color: #6b7280; font-size: .85rem; }
     .err { color: #b91c1c; }
 
-    /* Filtros */
     .filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
     .filters .input, .filters .select, .filters .btn { padding: .55rem .7rem; }
 
-    /* Lista */
     .list { border: 1px solid #e5e7eb; border-radius: var(--radius); overflow: hidden; }
     .row {
-      display: grid; grid-template-columns: 60px 1fr 200px 180px 150px;
+      display: grid; grid-template-columns: 60px 1fr 200px 180px 200px;
       gap: 12px; padding: 12px; border-bottom: 1px solid #f3f4f6; align-items: center;
     }
     .row.header { background: #f9fafb; font-weight: 600; }
@@ -81,13 +77,25 @@
     .status-done { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
 
     .actions { display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap; }
-
-    /* Select compacto de estado */
     .state-select {
       border: 1px solid #d1d5db; background: #fff; padding: .5rem .6rem; border-radius: var(--radius);
       transition: box-shadow .2s, border-color .2s;
     }
     .state-select:focus { border-color: var(--blue); outline: none; box-shadow: var(--ring); }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,.35); display: none; align-items: center; justify-content: center; z-index: 40;
+    }
+    .modal {
+      width: min(680px, 92vw); background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: var(--shadow);
+      padding: 16px; transform: translateY(6px); animation: pop .12s ease-out;
+    }
+    .modal-header { display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+    .modal-title { font-weight: 700; font-size: 1.05rem; }
+    .modal-actions { display:flex; gap: 8px; justify-content:flex-end; margin-top: 12px; }
+    @keyframes pop { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -136,9 +144,36 @@
     </div>
   </div>
 
+  <!-- Modal de edición -->
+  <div id="edit-backdrop" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal" role="document">
+      <div class="modal-header">
+        <div class="modal-title">Editar tarea <span id="edit-id" class="muted"></span></div>
+        <button class="btn secondary" onclick="closeEdit()">✕</button>
+      </div>
+      <div>
+        <label for="edit-text" class="muted">Texto</label>
+        <textarea id="edit-text" class="textarea" placeholder="Edita el contenido..."></textarea>
+      </div>
+      <div style="margin-top:10px;">
+        <label for="edit-status" class="muted">Estado</label>
+        <select id="edit-status" class="select" style="width:100%; margin-top:6px;">
+          <option value="pending">pending</option>
+          <option value="done">done</option>
+        </select>
+      </div>
+      <div id="edit-msg" class="muted" style="margin-top:8px;"></div>
+      <div class="modal-actions">
+        <button class="btn secondary" onclick="closeEdit()">Cancelar</button>
+        <button class="btn icon" onclick="submitEdit()">💾 Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // Cache global para tener el texto/tags actuales al hacer PUT
+    // Cache global para PUT
     window.TASKS_BY_ID = new Map();
+    let EDITING_ID = null;
 
     function logout() { window.location.href = "/app/logout"; }
 
@@ -183,12 +218,10 @@
       }
     }
 
-    // Eliminar SIN confirmación
     async function deleteTask(id) {
       try {
         const res = await fetch(`/tasks/${id}`, { method: 'DELETE', credentials: 'same-origin' });
         if (await handleAuthRedirect(res)) return;
-        // Acepta 204 o cualquier ok
         if (!res.ok && res.status !== 204) {
           const t = await res.text();
           console.error('Delete failed:', t);
@@ -199,13 +232,9 @@
       }
     }
 
-    // PUT requiere text => enviamos el texto actual y tags si existen
     async function updateTaskStatus(id, status) {
       const current = window.TASKS_BY_ID.get(id) || {};
-      const payload = {
-        text: current.text ?? '',
-        status,
-      };
+      const payload = { text: current.text ?? '', status };
       if (current.tags !== undefined) payload.tags = current.tags;
 
       try {
@@ -224,6 +253,65 @@
         await loadTasks();
       } catch (e) {
         console.error('Network error on update:', e);
+      }
+    }
+
+    function openEdit(id) {
+      const t = window.TASKS_BY_ID.get(id);
+      if (!t) return;
+      EDITING_ID = id;
+      document.getElementById('edit-id').textContent = `#${id}`;
+      document.getElementById('edit-text').value = t.text || '';
+      document.getElementById('edit-status').value = (t.status === 'done' ? 'done' : 'pending');
+      document.getElementById('edit-msg').textContent = '';
+      document.getElementById('edit-backdrop').style.display = 'flex';
+      document.getElementById('edit-backdrop').setAttribute('aria-hidden', 'false');
+      setTimeout(() => document.getElementById('edit-text').focus(), 30);
+    }
+
+    function closeEdit() {
+      EDITING_ID = null;
+      document.getElementById('edit-backdrop').style.display = 'none';
+      document.getElementById('edit-backdrop').setAttribute('aria-hidden', 'true');
+    }
+
+    async function submitEdit() {
+      const msg = document.getElementById('edit-msg');
+      msg.className = 'muted';
+      msg.textContent = '';
+
+      const id = EDITING_ID;
+      if (!id) return;
+      const text = (document.getElementById('edit-text').value || '').trim();
+      const status = document.getElementById('edit-status').value;
+
+      if (!text) { msg.textContent = '⚠️ El texto no puede estar vacío.'; msg.className = 'muted err'; return; }
+
+      // Reutilizamos tags si ya estaban cacheados; el backend volverá a extraerlos igualmente.
+      const current = window.TASKS_BY_ID.get(id) || {};
+      const payload = { text, status };
+      if (current.tags !== undefined) payload.tags = current.tags;
+
+      try {
+        const res = await fetch(`/tasks/${id}`, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (await handleAuthRedirect(res)) return;
+        if (!res.ok) {
+          let t; try { t = await res.json(); } catch { t = await res.text(); }
+          msg.textContent = `❌ Error ${res.status}: ${typeof t === 'string' ? t : JSON.stringify(t)}`;
+          msg.className = 'muted err';
+          return;
+        }
+        msg.textContent = '✅ Cambios guardados';
+        await loadTasks();
+        closeEdit();
+      } catch (e) {
+        msg.textContent = `❌ Error de red: ${e}`;
+        msg.className = 'muted err';
       }
     }
 
@@ -251,7 +339,6 @@
       const data = await res.json();
       const items = data.items || [];
 
-      // Refresca el cache
       window.TASKS_BY_ID.clear();
       for (const t of items) window.TASKS_BY_ID.set(t.id, t);
 
@@ -272,6 +359,7 @@
           </div>
           <div class="muted">${formatDate(t.created_at)}</div>
           <div class="actions">
+            <button class="btn icon" onclick="openEdit(${t.id})">✏️ Editar</button>
             <button class="btn danger icon" onclick="deleteTask(${t.id})">🗑️ Eliminar</button>
           </div>
         </div>
@@ -296,6 +384,14 @@
 
     function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
     function formatDate(iso){ if(!iso) return ''; try{const d=new Date(iso);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`}catch{return iso;} }
+
+    // UX extra: cerrar modal con ESC y click fuera
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.getElementById('edit-backdrop').style.display === 'flex') closeEdit();
+    });
+    document.getElementById('edit-backdrop').addEventListener('click', e => {
+      if (e.target.id === 'edit-backdrop') closeEdit();
+    });
 
     window.addEventListener('DOMContentLoaded', loadTasks);
   </script>
