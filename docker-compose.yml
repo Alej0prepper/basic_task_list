@@ -11,30 +11,60 @@ services:
   db:
     image: postgres:16
     container_name: tasklist-backend-db-1
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-tasklist}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5432:5432"
     healthcheck:
+      # Nota: aquí sí podemos interpolar variables del .env
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 2s
-      timeout: 2s
-      retries: 20
+      interval: 3s
+      timeout: 3s
+      retries: 25
     volumes:
       - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   # ----------------------------------------------------------
-  # 🚀 Aplicación principal (FastAPI + Ngrok)
+  # 🛠️ Job de migraciones (Alembic) - corre ANTES de la app
+  # ----------------------------------------------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tasklist-backend-migrate
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Ejecuta todas las migraciones; si falla, no arranca la app
+    command: ["sh", "-c", "alembic upgrade head"]
+    volumes:
+      - ./tasklist_app:/app/tasklist_app:rw
+      - ./alembic:/app/alembic:rw
+      - ./alembic.ini:/app/alembic.ini:ro
+    restart: "no"
+
+  # ----------------------------------------------------------
+  # 🚀 Aplicación principal (FastAPI)
   # ----------------------------------------------------------
   app:
     build:
       context: .
+      dockerfile: Dockerfile
     container_name: tasklist-backend-app-1
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
@@ -43,6 +73,7 @@ services:
       ALGORITHM: ${ALGORITHM}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      # Si usas ngrok desde la app:
       NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
     ports:
       - "${APP_PORT:-8012}:8000"
@@ -51,33 +82,51 @@ services:
       - ./alembic:/app/alembic:rw
       - ./alembic.ini:/app/alembic.ini:ro
       - ./entrypoint.sh:/app/entrypoint.sh:ro
-    command: ["/app/entrypoint.sh"]
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+    # Cinturón y tirantes: migra y luego arranca la app
+    command: ["sh", "-c", "alembic upgrade head && /app/entrypoint.sh || uvicorn tasklist_app.main:app --host 0.0.0.0 --port 8000"]
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 10
+    restart: unless-stopped
 
+  # ----------------------------------------------------------
+  # 🌐 Servicio web (estático / proxy simple si lo usas)
+  # ----------------------------------------------------------
   web:
     build:
-      context: .           # carpeta donde está tu Dockerfile
+      context: .
       dockerfile: Dockerfile
+    container_name: tasklist-backend-web
+    env_file:
+    - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      app:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
       - ./tasklist_app/static:/app/tasklist_app/static:ro
       - ./tasklist_app/templates:/app/tasklist_app/templates:ro
-    command: uvicorn tasklist_app.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+    command: ["sh", "-c", "uvicorn tasklist_app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"]
+    restart: unless-stopped
+
   # ----------------------------------------------------------
-  # 🧪 Servicio para pruebas automatizadas (pytest)
+  # 🧪 Pruebas automatizadas (pytest)
   # ----------------------------------------------------------
   app-test:
     build:
       context: .
+      dockerfile: Dockerfile
     container_name: tasklist-backend-tests
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
       - .env
     environment:
@@ -97,7 +146,7 @@ services:
         pip install 'python-jose[cryptography]' 'passlib[bcrypt]' pydantic-settings openpyxl &&
         pytest -q --disable-warnings
       "
-
+    restart: "no"
 
 # ----------------------------------------------------------
 # 📦 Volúmenes persistentes
