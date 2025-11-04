@@ -81,7 +81,6 @@ services:
       - ./tasklist_app:/app/tasklist_app:rw
       - ./alembic:/app/alembic:rw
       - ./alembic.ini:/app/alembic.ini:ro
-      - ./entrypoint.sh:/app/entrypoint.sh:ro
     # Cinturón y tirantes: migra y luego arranca la app
     command: ["sh", "-c", "alembic upgrade head && /app/entrypoint.sh || uvicorn tasklist_app.main:app --host 0.0.0.0 --port 8000"]
     # healthcheck:

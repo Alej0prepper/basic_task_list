@@ -29,8 +29,6 @@ COPY tasklist_app /app/tasklist_app
 COPY alembic /app/alembic
 COPY alembic.ini /app/alembic.ini
 COPY entrypoint.sh /app/entrypoint.sh
-# Copiar el entrypoint y darle permisos de ejecución
-COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 # ---------- Dependencias Python ----------
 RUN python -m pip install --upgrade pip && \
