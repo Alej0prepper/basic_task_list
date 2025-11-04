@@ -115,15 +115,21 @@ alembic upgrade head
 log "✅ Alembic migrations applied!"
 
 # -------------------------------------------------------------------
-# 6) (Opcional) Ngrok
+# 6) Ngrok
 # -------------------------------------------------------------------
+# 🌐 Configurar Ngrok si existe token
 if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
-  log "🔐 Configuring Ngrok authtoken..."
-  ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || true
-  log "🌍 Starting Ngrok tunnel on :8000..."
-  ngrok http 8000 --log=stdout > /tmp/ngrok.log 2>&1 &
-fi 
+  echo "[entrypoint] 🔐 Configuring Ngrok authtoken..."
+  ngrok config add-authtoken "${NGROK_AUTHTOKEN}"
+else
+  echo "[entrypoint] ⚠️ No NGROK_AUTHTOKEN provided, using anonymous session."
+fi
 
+# 🚀 Iniciar Ngrok en segundo plano
+echo "[entrypoint] Starting Ngrok tunnel on port 8000..."
+ngrok http 8000 --log=stdout > /tmp/ngrok.log 2>&1 &
+
+sleep 3
 # -------------------------------------------------------------------
 # 7) Lanzar la app
 # -------------------------------------------------------------------
