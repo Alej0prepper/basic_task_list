@@ -8,7 +8,7 @@ services:
   # ----------------------------------------------------------
   # 🐘 Base de datos PostgreSQL
   # ----------------------------------------------------------
-  db:
+  db: 
     image: postgres:16
     container_name: tasklist-backend-db-1
     env_file:

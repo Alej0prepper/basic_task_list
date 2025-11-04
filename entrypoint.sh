@@ -122,7 +122,7 @@ if [ -n "${NGROK_AUTHTOKEN:-}" ]; then
   ngrok config add-authtoken "${NGROK_AUTHTOKEN}" || true
   log "🌍 Starting Ngrok tunnel on :8000..."
   ngrok http 8000 --log=stdout > /tmp/ngrok.log 2>&1 &
-fi
+fi 
 
 # -------------------------------------------------------------------
 # 7) Lanzar la app
